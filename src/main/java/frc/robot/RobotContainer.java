@@ -74,6 +74,8 @@ public class RobotContainer {
     controller.rightBumper().whileTrue(new AimAtTargetCommand(drive, launcher, fwd, str, ()-> fieldRelative));
     controller.y().onTrue(Commands.runOnce(drive::setPoseFromVision));       
     controller.start().onTrue(new InstantCommand(() -> fieldRelative = !fieldRelative));
+    controller.x().onTrue(Commands.runOnce(() -> launcher.setUseRpmControl(!launcher.isUsingRpmControl())
+));
   }
 
   public Command getAutonomousCommand() {

@@ -13,8 +13,10 @@ import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.Commands;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 
+import com.revrobotics.spark.SparkBase.ControlType;
 import com.revrobotics.spark.SparkBase.PersistMode;
 import com.revrobotics.spark.SparkBase.ResetMode;
+import com.revrobotics.spark.SparkClosedLoopController;
 import com.revrobotics.spark.SparkLowLevel.MotorType;
 
 @SuppressWarnings("removal")
@@ -28,12 +30,15 @@ public class Launcher extends SubsystemBase{
     public static final int kPreLaunchMotorCanID = 10;
     public static final int kLaunchMotorCanID = 9;
 
-    private double targetRpm = 0.0;
     private double targetVoltage = 5.8;
     private double hopperVoltage = 4.5;
     private double prelaunchVoltage = 5.5;
     private DoubleSupplier targetVoltageSupplier;
     
+    private SparkClosedLoopController launchClosedLoopController;
+    private boolean useRpmControl = false;
+    private double targetRpm = 4000.0;
+    private DoubleSupplier targetRpmSupplier;
 
     static {
         DefaultConfig.smartCurrentLimit(50);
@@ -41,7 +46,12 @@ public class Launcher extends SubsystemBase{
         DefaultConfig.openLoopRampRate(1.5);
         DefaultConfig.inverted(true);
         DefaultConfig.voltageCompensation(12);
-        DefaultConfig.closedLoop.allowedClosedLoopError(100.0, ClosedLoopSlot.kSlot0);
+        DefaultConfig.closedLoop.allowedClosedLoopError(100.0, ClosedLoopSlot.kSlot0);        
+        DefaultConfig.closedLoop
+            .p(0.0002)
+            .i(0.0)
+            .d(0.0)
+            .velocityFF(0.00017);
     }
 
     public Launcher() {
@@ -52,6 +62,8 @@ public class Launcher extends SubsystemBase{
         HopperMotor = new SparkMax(kHopperMotorCanID, MotorType.kBrushless);
         HopperMotor.configure(DefaultConfig, ResetMode.kNoResetSafeParameters, PersistMode.kNoPersistParameters);
         targetVoltageSupplier = ()-> targetVoltage;
+        launchClosedLoopController = LaunchMotor.getClosedLoopController();
+        targetRpmSupplier = () -> targetRpm;
     }
 
     @Override
@@ -82,7 +94,7 @@ public class Launcher extends SubsystemBase{
     }
 
     public Command run() {
-        return this.runOnce(() -> LaunchMotor.setVoltage(targetVoltageSupplier.getAsDouble()))
+        return this.runOnce(this::startLaunchMotor)
             .andThen(Commands.waitSeconds(1.3))
             .andThen(this.runOnce(() -> PreLaunchMotor.setVoltage(prelaunchVoltage)))
             .andThen(this.runOnce(() -> HopperMotor.setVoltage(hopperVoltage)));
@@ -111,7 +123,7 @@ public class Launcher extends SubsystemBase{
 
     public Command fire() {
         return Commands.sequence(
-            this.runOnce(() -> LaunchMotor.setVoltage(targetVoltageSupplier.getAsDouble())),
+            this.runOnce(this::startLaunchMotor),
             Commands.waitSeconds(1.3),
             this.run(() -> {
                 PreLaunchMotor.setVoltage(prelaunchVoltage);
@@ -122,6 +134,29 @@ public class Launcher extends SubsystemBase{
             PreLaunchMotor.stopMotor();
             HopperMotor.stopMotor();
         });
+    }
+
+    public void setUseRpmControl(boolean enabled) {
+        useRpmControl = enabled;
+    }
+
+    public boolean isUsingRpmControl() {
+        return useRpmControl;
+    }
+
+    public void setTargetRpm(double rpm) {
+        targetRpm = MathUtil.clamp(rpm, 2500.0, 6000.0);
+    }
+
+    private void startLaunchMotor() {
+        if (useRpmControl) {
+            launchClosedLoopController.setReference(
+                targetRpmSupplier.getAsDouble(),
+                ControlType.kVelocity
+            );
+        } else {
+            LaunchMotor.setVoltage(targetVoltageSupplier.getAsDouble());
+        }
     }
 
 }

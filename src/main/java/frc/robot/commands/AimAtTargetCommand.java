@@ -80,8 +80,13 @@ public class AimAtTargetCommand extends Command {
 
         // Calculate distance, lookup voltage, and set voltage 
         double distance = toTarget.getNorm();
-        double voltage = lookupVoltage(distance);
-        launcher.setTargetVoltage(voltage);
+        if (launcher.isUsingRpmControl()) {
+            double rpm = lookupRpm(distance);
+            launcher.setTargetRpm(rpm);
+        } else {
+            double voltage = lookupVoltage(distance);
+            launcher.setTargetVoltage(voltage);
+        }
 
         // Lookup Time of Flight 
         double timeOfFlight = lookupTimeOfFlight(distance);
@@ -141,6 +146,7 @@ public class AimAtTargetCommand extends Command {
     private static final double[] Distance = { 6, 8, 18 };
     private static final double[] Voltage = { 5.35, 5.4, 7};
     private static final double[] TimeOfFlight = {0.4, 0.6, 0.8};
+    private static final double[] Rpm = { 3200, 3400, 4300 };
 
     public static double lookupVoltage(double meters) {
         // Convert meters to feet
@@ -174,6 +180,21 @@ public class AimAtTargetCommand extends Command {
         }
         }
         return TimeOfFlight[TimeOfFlight.length - 1];
+    }
+
+
+    public static double lookupRpm(double meters) {
+        double feet = Units.metersToFeet(meters);
+
+        if (feet <= Distance[0]) return Rpm[0];
+
+        for (int i = 0; i < Distance.length - 1; i++) {
+            if (feet <= Distance[i + 1]) {
+                double t = (feet - Distance[i]) / (Distance[i + 1] - Distance[i]);
+                return Rpm[i] + t * (Rpm[i + 1] - Rpm[i]);
+            }
+        }
+        return Rpm[Rpm.length - 1];
     }
 
 }
